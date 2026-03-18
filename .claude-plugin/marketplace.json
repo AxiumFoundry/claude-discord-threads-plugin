@@ -1118,6 +1118,16 @@
         "sha": "e671da495f7ec0ed6be5e9fa71e260f886a1dc36"
       },
       "homepage": "https://docs.brightdata.com"
+    },
+    {
+      "name": "fiftyone",
+      "description": "Build high-quality datasets and computer vision models. Visualize datasets, analyze models, find duplicates, run inference, evaluate predictions, and develop custom plugins.",
+      "source": {
+        "source": "url",
+        "url": "https://github.com/voxel51/fiftyone-skills.git",
+        "sha": "593e0553fc9fd94db52386ada2c9e2074a6ecf89"
+      },
+      "homepage": "https://docs.voxel51.com/"
     }
   ]
 }
