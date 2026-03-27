@@ -28,8 +28,10 @@ import {
   type Message,
   type Attachment,
   type Interaction,
+  type ThreadChannel,
 } from 'discord.js'
 import { randomBytes } from 'crypto'
+import { execSync } from 'child_process'
 import { readFileSync, writeFileSync, mkdirSync, readdirSync, rmSync, statSync, renameSync, realpathSync, chmodSync } from 'fs'
 import { homedir } from 'os'
 import { join, sep } from 'path'
@@ -62,6 +64,60 @@ if (!TOKEN) {
   process.exit(1)
 }
 const INBOX_DIR = join(STATE_DIR, 'inbox')
+
+// Session thread mode — creates a private thread per Claude Code session.
+// Set DISCORD_THREAD_CHANNEL_ID to the parent text channel snowflake.
+const THREAD_PARENT_CHANNEL_ID = process.env.DISCORD_THREAD_CHANNEL_ID?.trim() || null
+const SESSION_ARCHIVE_ON_EXIT = process.env.DISCORD_SESSION_ARCHIVE === 'true'
+
+// Detect the project directory. The MCP server runs with --cwd set to the
+// plugin dir, so process.cwd() is wrong. Walk up the process tree via lsof
+// until we find an ancestor whose cwd is NOT the plugin dir — that's the
+// Claude Code session's project directory.
+function detectProjectDir(): string {
+  if (process.env.CLAUDE_PROJECT_DIR?.trim()) return process.env.CLAUDE_PROJECT_DIR.trim()
+  if (process.env.DISCORD_PROJECT_DIR?.trim()) return process.env.DISCORD_PROJECT_DIR.trim()
+  const pluginDir = process.cwd()
+  try {
+    // Walk up the process tree (max 5 hops) looking for a different cwd.
+    let pid = process.ppid
+    for (let i = 0; i < 5 && pid > 1; i++) {
+      const lsofOut = execSync(`lsof -a -p ${pid} -d cwd -Fn`, {
+        encoding: 'utf8', stdio: ['ignore', 'pipe', 'ignore'], timeout: 3000,
+      })
+      const cwdMatch = lsofOut.match(/\nn(.+)/)
+      if (cwdMatch && cwdMatch[1] !== pluginDir) return cwdMatch[1]
+      const psOut = execSync(`ps -o ppid= -p ${pid}`, {
+        encoding: 'utf8', stdio: ['ignore', 'pipe', 'ignore'], timeout: 3000,
+      })
+      pid = parseInt(psOut.trim(), 10) || 0
+    }
+  } catch {}
+  return process.env.PWD ?? process.cwd()
+}
+
+function resolveSessionName(): string {
+  if (process.env.DISCORD_SESSION_NAME?.trim()) {
+    return process.env.DISCORD_SESSION_NAME.trim().slice(0, 100)
+  }
+  const projectDir = detectProjectDir()
+  const dir = projectDir.split('/').filter(Boolean).pop() ?? 'session'
+  let branch = 'unknown'
+  try {
+    branch = execSync('git rev-parse --abbrev-ref HEAD', {
+      cwd: projectDir,
+      encoding: 'utf8',
+      stdio: ['ignore', 'pipe', 'ignore'],
+      timeout: 3000,
+    }).trim()
+  } catch {}
+  const date = new Date().toISOString().slice(0, 10)
+  const suffix = randomBytes(2).toString('hex')
+  return `${dir}/${branch} ${date} ${suffix}`.slice(0, 100)
+}
+
+const SESSION_NAME: string | null = THREAD_PARENT_CHANNEL_ID ? resolveSessionName() : null
+let sessionThread: ThreadChannel | null = null
 
 // Last-resort safety net — without these the process dies silently on any
 // unhandled promise rejection. With them it logs and keeps serving tools.
@@ -239,6 +295,14 @@ async function gate(msg: Message): Promise<GateResult> {
   if (access.dmPolicy === 'disabled') return { action: 'drop' }
 
   const senderId = msg.author.id
+
+  // Session thread: if this message is in our session-owned thread,
+  // apply sender gating only (no requireMention — thread is already scoped).
+  if (sessionThread && msg.channelId === sessionThread.id) {
+    if (access.allowFrom.includes(senderId)) return { action: 'deliver', access }
+    return { action: 'drop' }
+  }
+
   const isDM = msg.channel.type === ChannelType.DM
 
   if (isDM) {
@@ -402,6 +466,8 @@ async function fetchTextChannel(id: string) {
 // Thread → parent lookup mirrors the inbound gate.
 async function fetchAllowedChannel(id: string) {
   const ch = await fetchTextChannel(id)
+  // Session thread is always allowed — gating was done at inbound.
+  if (sessionThread && ch.id === sessionThread.id) return ch
   const access = loadAccess()
   if (ch.type === ChannelType.DM) {
     if (access.allowFrom.includes(ch.recipientId)) return ch
@@ -501,15 +567,24 @@ mcp.setNotificationHandler(
         .setEmoji('❌')
         .setStyle(ButtonStyle.Danger),
     )
-    for (const userId of access.allowFrom) {
-      void (async () => {
-        try {
-          const user = await client.users.fetch(userId)
-          await user.send({ content: text, components: [row] })
-        } catch (e) {
-          process.stderr.write(`permission_request send to ${userId} failed: ${e}\n`)
-        }
-      })()
+    // If a session thread exists, send permission requests there instead of DMs.
+    if (sessionThread) {
+      try {
+        await sessionThread.send({ content: text, components: [row] })
+      } catch (e) {
+        process.stderr.write(`permission_request send to session thread failed: ${e}\n`)
+      }
+    } else {
+      for (const userId of access.allowFrom) {
+        void (async () => {
+          try {
+            const user = await client.users.fetch(userId)
+            await user.send({ content: text, components: [row] })
+          } catch (e) {
+            process.stderr.write(`permission_request send to ${userId} failed: ${e}\n`)
+          }
+        })()
+      }
     }
   },
 )
@@ -722,17 +797,27 @@ await mcp.connect(new StdioServerTransport())
 // When Claude Code closes the MCP connection, stdin gets EOF. Without this
 // the gateway stays connected as a zombie holding resources.
 let shuttingDown = false
-function shutdown(): void {
+async function shutdown(): Promise<void> {
   if (shuttingDown) return
   shuttingDown = true
   process.stderr.write('discord channel: shutting down\n')
+
+  if (sessionThread) {
+    try {
+      await sessionThread.send('Session ended.')
+      if (SESSION_ARCHIVE_ON_EXIT) {
+        await sessionThread.setArchived(true)
+      }
+    } catch {}
+  }
+
   setTimeout(() => process.exit(0), 2000)
   void Promise.resolve(client.destroy()).finally(() => process.exit(0))
 }
-process.stdin.on('end', shutdown)
-process.stdin.on('close', shutdown)
-process.on('SIGTERM', shutdown)
-process.on('SIGINT', shutdown)
+process.stdin.on('end', () => { void shutdown() })
+process.stdin.on('close', () => { void shutdown() })
+process.on('SIGTERM', () => { void shutdown() })
+process.on('SIGINT', () => { void shutdown() })
 
 client.on('error', err => {
   process.stderr.write(`discord channel: client error: ${err}\n`)
@@ -883,8 +968,55 @@ async function handleInbound(msg: Message): Promise<void> {
   })
 }
 
-client.once('ready', c => {
+client.once('ready', async c => {
   process.stderr.write(`discord channel: gateway connected as ${c.user.tag}\n`)
+
+  if (!THREAD_PARENT_CHANNEL_ID || !SESSION_NAME) return
+
+  try {
+    const parent = await client.channels.fetch(THREAD_PARENT_CHANNEL_ID)
+    if (!parent || !parent.isTextBased() || parent.isDMBased()) {
+      process.stderr.write(
+        `discord channel: DISCORD_THREAD_CHANNEL_ID ${THREAD_PARENT_CHANNEL_ID} is not a guild text channel — thread mode disabled\n`,
+      )
+      return
+    }
+    if (!('threads' in parent)) {
+      process.stderr.write(
+        `discord channel: parent channel does not support threads — thread mode disabled\n`,
+      )
+      return
+    }
+
+    // Try private thread first, fall back to public if missing permissions.
+    let thread: ThreadChannel
+    try {
+      thread = await (parent as any).threads.create({
+        name: SESSION_NAME,
+        type: ChannelType.PrivateThread,
+        reason: 'Claude Code session',
+      }) as ThreadChannel
+    } catch {
+      thread = await (parent as any).threads.create({
+        name: SESSION_NAME,
+        type: ChannelType.PublicThread,
+        reason: 'Claude Code session',
+      }) as ThreadChannel
+    }
+
+    sessionThread = thread
+
+    // Add allowlisted users to the thread so they can see it.
+    const access = loadAccess()
+    for (const userId of access.allowFrom) {
+      await thread.members.add(userId).catch(() => {})
+    }
+
+    await thread.send(`Session started: **${SESSION_NAME}**`)
+    process.stderr.write(`discord channel: session thread created: ${thread.url}\n`)
+  } catch (err) {
+    process.stderr.write(`discord channel: failed to create session thread: ${err}\n`)
+  }
 })
 
 client.login(TOKEN).catch(err => {

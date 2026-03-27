@@ -32,13 +32,14 @@ Navigate to **OAuth2** → **URL Generator**. Select the `bot` scope. Under **Bo
 - View Channels
 - Send Messages
 - Send Messages in Threads
+- Create Private Threads
 - Read Message History
 - Attach Files
 - Add Reactions
 
 Integration type: **Guild Install**. Copy the **Generated URL**, open it, and add the bot to any server you're in.
 
-> For DM-only use you technically need zero permissions — but enabling them now saves a trip back when you want guild channels later.
+> For DM-only use you technically need zero permissions — but enabling them now saves a trip back when you want guild channels or session threads later.
 
 **4. Install the plugin.**
 
@@ -80,6 +81,33 @@ Your next DM reaches the assistant.
 **8. Lock it down.**
 
 Pairing is for capturing IDs. Once you're in, switch to `allowlist` so strangers don't get pairing-code replies. Ask Claude to do it, or `/discord:access policy allowlist` directly.
+
+## Session threads
+
+When running multiple Claude Code sessions simultaneously, each session can create its own Discord thread so messages are routed to the correct session instead of being broadcast to all of them.
+
+**Setup:** Add `DISCORD_THREAD_CHANNEL_ID` to `~/.claude/channels/discord/.env` with the snowflake of a text channel where threads should be created. Enable Developer Mode in Discord (User Settings → Advanced), right-click the channel → Copy Channel ID.
+
+```
+DISCORD_THREAD_CHANNEL_ID=123456789012345678
+```
+
+**How it works:**
+
+- On startup, the bot creates a private thread in the configured channel, named after the project directory and git branch (e.g. `myapp/feature-auth 2026-03-27 a3f1`).
+- Messages in that thread are only delivered to the session that created it.
+- DMs continue to work as before — routed to whichever session receives them.
+- When the session ends, the bot posts "Session ended." in the thread.
+
+**Optional env vars:**
+
+| Variable | Default | Description |
+| --- | --- | --- |
+| `DISCORD_THREAD_CHANNEL_ID` | _(unset — thread mode disabled)_ | Parent text channel snowflake for session threads. |
+| `DISCORD_SESSION_NAME` | _(auto: `dir/branch date suffix`)_ | Explicit thread name override (max 100 chars). |
+| `DISCORD_SESSION_ARCHIVE` | `false` | Set to `true` to archive the thread when the session ends. |
+
+**Permissions:** Private threads require the bot to have **Create Private Threads** permission. If missing, the server falls back to public threads automatically.
 
 ## Access control
 
