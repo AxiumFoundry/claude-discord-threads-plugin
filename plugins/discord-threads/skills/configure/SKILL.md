@@ -10,7 +10,7 @@ allowed-tools:
   - Bash(chmod *)
 ---
 
-# /discord:configure — Discord Channel Setup
+# /discord-threads:configure — Discord Channel Setup
 
 Writes the bot token and session thread settings to
 `~/.claude/channels/discord/.env` and orients the user on access policy.
@@ -43,14 +43,14 @@ Read both state files and give the user a complete picture:
    - Guild channels opted in: count
 
 4. **What next** — end with a concrete next step based on state:
-   - No token → *"Run `/discord:configure <token>` with your bot token from
+   - No token → *"Run `/discord-threads:configure <token>` with your bot token from
      the Developer Portal → Bot → Reset Token."*
    - Token set, policy is pairing, nobody allowed → *"DM your bot on
-     Discord. It replies with a code; approve with `/discord:access pair
+     Discord. It replies with a code; approve with `/discord-threads:access pair
      <code>`."*
    - Token set, someone allowed, no thread channel → *"Ready. DM your bot
      to reach the assistant. If you run multiple sessions, set up session
-     threads with `/discord:configure threads <channel_id>`."*
+     threads with `/discord-threads:configure threads <channel_id>`."*
    - Token set, someone allowed, thread channel set → *"Ready. Each session
      gets its own thread in the configured channel."*
 
@@ -65,13 +65,13 @@ Drive the conversation this way:
 2. Ask: *"Is that everyone who should reach you through this bot?"*
 3. **If yes and policy is still `pairing`** → *"Good. Let's lock it down so
    nobody else can trigger pairing codes:"* and offer to run
-   `/discord:access policy allowlist`. Do this proactively — don't wait to
+   `/discord-threads:access policy allowlist`. Do this proactively — don't wait to
    be asked.
 4. **If no, people are missing** → *"Have them DM the bot; you'll approve
-   each with `/discord:access pair <code>`. Run this skill again once
+   each with `/discord-threads:access pair <code>`. Run this skill again once
    everyone's in and we'll lock it."* Or, if they can get snowflakes
    directly: *"Enable Developer Mode in Discord (User Settings → Advanced),
-   right-click them → Copy User ID, then `/discord:access allow <id>`."*
+   right-click them → Copy User ID, then `/discord-threads:access allow <id>`."*
 5. **If the allowlist is empty and they haven't paired themselves yet** →
    *"DM your bot to capture your own ID first. Then we'll add anyone else
    and lock it down."*
@@ -132,6 +132,6 @@ Delete the `DISCORD_BOT_TOKEN=` line (or the file if that's the only line).
 - The server reads `.env` once at boot. Token and thread channel changes need
   a session restart or `/reload-plugins`. Say so after saving.
 - `access.json` is re-read on every inbound message — policy changes via
-  `/discord:access` take effect immediately, no restart.
+  `/discord-threads:access` take effect immediately, no restart.
 - The bot needs **Create Private Threads** permission in the target channel.
   If missing, it falls back to public threads automatically.
