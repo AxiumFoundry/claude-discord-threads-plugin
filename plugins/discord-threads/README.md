@@ -107,11 +107,13 @@ Pairing is for capturing IDs. Once you're in, switch to `allowlist` so strangers
 
 When running multiple Claude Code sessions simultaneously, each session can create its own Discord thread so messages are routed to the correct session instead of being broadcast to all of them.
 
-**Setup:** Add `DISCORD_THREAD_CHANNEL_ID` to `~/.claude/channels/discord/.env` with the snowflake of a text channel where threads should be created. Enable Developer Mode in Discord (User Settings → Advanced), right-click the channel → Copy Channel ID.
+**Setup:** Enable Developer Mode in Discord (User Settings → Advanced), right-click the text channel where threads should be created → Copy Channel ID. Then run:
 
 ```
-DISCORD_THREAD_CHANNEL_ID=123456789012345678
+/discord:configure threads <channel_id>
 ```
+
+This saves `DISCORD_THREAD_CHANNEL_ID` to `~/.claude/channels/discord/.env`. To disable: `/discord:configure threads off`.
 
 **How it works:**
 
@@ -120,11 +122,10 @@ DISCORD_THREAD_CHANNEL_ID=123456789012345678
 - DMs continue to work as before — routed to whichever session receives them.
 - When the session ends, the bot posts "Session ended." in the thread.
 
-**Optional env vars:**
+**Optional env vars** (add manually to `~/.claude/channels/discord/.env`):
 
 | Variable | Default | Description |
 | --- | --- | --- |
-| `DISCORD_THREAD_CHANNEL_ID` | _(unset — thread mode disabled)_ | Parent text channel snowflake for session threads. |
 | `DISCORD_SESSION_NAME` | _(auto: `dir/branch date suffix`)_ | Explicit thread name override (max 100 chars). |
 | `DISCORD_SESSION_ARCHIVE` | `false` | Set to `true` to archive the thread when the session ends. |
 
