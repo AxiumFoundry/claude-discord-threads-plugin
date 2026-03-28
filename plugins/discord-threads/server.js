@@ -68,11 +68,23 @@ function detectProjectDir() {
   try {
     let pid = process.ppid
     for (let i = 0; i < 5 && pid > 1; i++) {
-      const lsofOut = execSync(`lsof -a -p ${pid} -d cwd -Fn`, {
-        encoding: 'utf8', stdio: ['ignore', 'pipe', 'ignore'], timeout: 3000,
-      })
-      const cwdMatch = lsofOut.match(/\nn(.+)/)
-      if (cwdMatch && cwdMatch[1] !== pluginDir) return cwdMatch[1]
+      // Try readlink first (works on Linux/WSL without lsof)
+      let cwd
+      try {
+        cwd = execSync(`readlink /proc/${pid}/cwd`, {
+          encoding: 'utf8', stdio: ['ignore', 'pipe', 'ignore'], timeout: 3000,
+        }).trim()
+      } catch {
+        // Fall back to lsof (macOS, or Linux without /proc access)
+        try {
+          const lsofOut = execSync(`lsof -a -p ${pid} -d cwd -Fn`, {
+            encoding: 'utf8', stdio: ['ignore', 'pipe', 'ignore'], timeout: 3000,
+          })
+          const cwdMatch = lsofOut.match(/\nn(.+)/)
+          if (cwdMatch) cwd = cwdMatch[1]
+        } catch {}
+      }
+      if (cwd && cwd.startsWith('/') && cwd !== pluginDir) return cwd
       const psOut = execSync(`ps -o ppid= -p ${pid}`, {
         encoding: 'utf8', stdio: ['ignore', 'pipe', 'ignore'], timeout: 3000,
       })
