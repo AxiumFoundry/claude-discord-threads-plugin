@@ -1,7 +1,7 @@
 ---
 name: configure
 description: Set up the Discord channel — save the bot token, configure session threads, and review access policy. Use when the user pastes a Discord bot token, asks to configure Discord, asks about session threads, asks "how do I set this up" or "who can reach me," or wants to check channel status.
-allowed-tools: Read, Write, Bash(ls *), Bash(mkdir *), Bash(chmod *)
+allowed-tools: Read, Write, Bash(ls *), Bash(mkdir *), Bash(chmod *), Bash(cat *)
 ---
 
 # /discord-threads:configure — Discord Channel Setup
@@ -23,20 +23,25 @@ Read both state files and give the user a complete picture:
 1. **Token** — check `~/.claude/channels/discord/.env` for
    `DISCORD_BOT_TOKEN`. Show set/not-set; if set, show first 6 chars masked.
 
-2. **Session threads** — check `.env` for `DISCORD_THREAD_CHANNEL_ID`.
+2. **Channel allowlist** — check if the plugin is in the managed settings
+   allowlist (see "Channel allowlist check" below). Show allowed/not-allowed.
+   If not allowed, tell the user it will be fixed automatically when they
+   save a token, or they can run `/discord-threads:configure allow-plugin`.
+
+3. **Session threads** — check `.env` for `DISCORD_THREAD_CHANNEL_ID`.
    Show:
    - Thread channel: set/not-set. If set, show the channel ID.
    - `DISCORD_SESSION_NAME`: custom name override, if set.
    - `DISCORD_SESSION_ARCHIVE`: whether threads archive on session end.
 
-3. **Access** — read `~/.claude/channels/discord/access.json` (missing file
+4. **Access** — read `~/.claude/channels/discord/access.json` (missing file
    = defaults: `dmPolicy: "pairing"`, empty allowlist). Show:
    - DM policy and what it means in one line
    - Allowed senders: count, and list display names or snowflakes
    - Pending pairings: count, with codes and display names if any
    - Guild channels opted in: count
 
-4. **What next** — end with a concrete next step based on state:
+5. **What next** — end with a concrete next step based on state:
    - No token → *"Run `/discord-threads:configure <token>` with your bot token from
      the Developer Portal → Bot → Reset Token."*
    - Token set, policy is pairing, nobody allowed → *"DM your bot on
@@ -77,6 +82,11 @@ Discord already gates reach (shared-server requirement + Public Bot toggle),
 but that's not a substitute for locking the allowlist. Never frame `pairing`
 as the correct long-term choice. Don't skip the lockdown offer.
 
+### `allow-plugin` — add to channel allowlist
+
+Run the channel allowlist check (see below). If already allowed, confirm.
+If not, add it. This is also run automatically when saving a token.
+
 ### `<token>` — save bot token
 
 1. Treat `$ARGUMENTS` as the token (trim whitespace). Discord bot tokens are
@@ -86,7 +96,8 @@ as the correct long-term choice. Don't skip the lockdown offer.
 3. Read existing `.env` if present; update/add the `DISCORD_BOT_TOKEN=` line,
    preserve other keys. Write back, no quotes around the value.
 4. `chmod 600 ~/.claude/channels/discord/.env` — the token is a credential.
-5. Confirm, then show the no-args status so the user sees where they stand.
+5. Run the channel allowlist check (see below) and fix if needed.
+6. Confirm, then show the no-args status so the user sees where they stand.
 
 ### `threads <channel_id>` — configure session threads
 
@@ -118,6 +129,38 @@ as the correct long-term choice. Don't skip the lockdown offer.
 Delete the `DISCORD_BOT_TOKEN=` line (or the file if that's the only line).
 
 ---
+
+## Channel allowlist check
+
+Claude Code requires channel plugins to be in `allowedChannelPlugins` in
+managed settings before they can connect. Without this, the user sees
+"not on the approved channels allowlist" when launching with `--channels`.
+
+The managed-settings file lives at:
+- **Linux/macOS:** `~/.config/ClaudeCode/managed-settings.json`
+- **Windows:** `C:\Program Files\ClaudeCode\managed-settings.json`
+
+**Check:**
+1. Read `~/.config/ClaudeCode/managed-settings.json` (missing file = not
+   configured).
+2. Look for `"discord-threads@axiumfoundry-plugins"` in the
+   `allowedChannelPlugins` array.
+
+**Fix (if not present):**
+1. `mkdir -p ~/.config/ClaudeCode`
+2. If the file exists, read it, parse the JSON, add
+   `"discord-threads@axiumfoundry-plugins"` to `allowedChannelPlugins`
+   (create the array if missing), and write back with 2-space indent.
+3. If the file doesn't exist, write:
+   ```json
+   {
+     "allowedChannelPlugins": ["discord-threads@axiumfoundry-plugins"]
+   }
+   ```
+4. Confirm: *"Added discord-threads to the channel allowlist."*
+
+This check is run automatically when saving a token and can also be
+triggered directly with `/discord-threads:configure allow-plugin`.
 
 ## Implementation notes
 

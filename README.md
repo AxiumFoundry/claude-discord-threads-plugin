@@ -21,7 +21,7 @@ Scroll down to **Privileged Gateway Intents** and enable **Message Content Inten
 
 **2. Generate a bot token.**
 
-Still on the **Bot** page, scroll up to **Token** and press **Reset Token**. Copy the token — it's only shown once. Hold onto it for step 5.
+Still on the **Bot** page, scroll up to **Token** and press **Reset Token**. Copy the token — it's only shown once. Hold onto it for step 6.
 
 **3. Invite the bot to a server.**
 
@@ -65,7 +65,7 @@ Exit and start a new `claude` session. The skill commands (`/discord-threads:con
 /discord-threads:configure MTIz...
 ```
 
-Writes `DISCORD_BOT_TOKEN=...` to `~/.claude/channels/discord/.env`. You can also write that file by hand, or set the variable in your shell environment — shell takes precedence.
+This saves the token to `~/.claude/channels/discord/.env` and automatically adds the plugin to Claude Code's channel allowlist (`~/.config/ClaudeCode/managed-settings.json`). You can also write the `.env` file by hand, or set the variable in your shell environment — shell takes precedence.
 
 > To run multiple bots on one machine (different tokens, separate allowlists), point `DISCORD_STATE_DIR` at a different directory per instance.
 
@@ -167,3 +167,50 @@ Downloads land in `~/.claude/channels/discord/inbox/`.
 
 Same path for attachments on historical messages found via `fetch_messages`
 (messages with attachments are marked `+Natt`).
+
+## Troubleshooting
+
+**"not on the approved channels allowlist"**
+
+The configure skill handles this automatically when you save a token (step 6). If you still see this error, run:
+
+```
+/discord-threads:configure allow-plugin
+```
+
+Or create the file manually:
+
+```sh
+mkdir -p ~/.config/ClaudeCode
+cat > ~/.config/ClaudeCode/managed-settings.json << 'EOF'
+{
+  "allowedChannelPlugins": ["discord-threads@axiumfoundry-plugins"]
+}
+EOF
+```
+
+Then restart Claude Code.
+
+**Bot doesn't respond to DMs**
+
+- Make sure you launched with `--channels`: `claude --channels plugin:discord-threads@axiumfoundry-plugins`
+- Check that **Message Content Intent** is enabled in the Discord Developer Portal (Bot → Privileged Gateway Intents).
+- Confirm you share a server with the bot — Discord doesn't allow DMs otherwise.
+
+**"not found" when running `/discord-threads:configure`**
+
+Restart Claude Code after installing the plugin. Skills aren't loaded until the next session.
+
+**Every reply triggers a permission prompt**
+
+Add the Discord tools to your auto-allow list in `~/.claude/settings.json` (see step 9 above).
+
+**Guild channel messages are ignored**
+
+Guild channels are off by default. Opt in with:
+
+```
+/discord-threads:access group add <channelId>
+```
+
+Find the channel ID by enabling Developer Mode in Discord, then right-clicking the channel → Copy Channel ID.
