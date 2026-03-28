@@ -65,9 +65,7 @@ Exit and start a new `claude` session. The skill commands (`/discord-threads:con
 /discord-threads:configure MTIz...
 ```
 
-This saves the token to `~/.claude/channels/discord/.env` and automatically:
-- Adds the plugin to Claude Code's channel allowlist (`~/.config/ClaudeCode/managed-settings.json`)
-- Auto-approves the Discord MCP tools so replies don't trigger permission prompts (`~/.claude/settings.json`)
+This saves the token to `~/.claude/channels/discord/.env` and auto-approves the Discord MCP tools so replies don't trigger permission prompts (`~/.claude/settings.json`).
 
 You can also write the `.env` file by hand, or set the variable in your shell environment — shell takes precedence.
 
@@ -78,8 +76,13 @@ You can also write the `.env` file by hand, or set the variable in your shell en
 The server won't connect without this — exit your session and start a new one:
 
 ```sh
-claude --channels plugin:discord-threads@axiumfoundry-plugins
+claude --dangerously-load-development-channels --channels plugin:discord-threads@axiumfoundry-plugins
 ```
+
+> The `--dangerously-load-development-channels` flag is required until the plugin is listed in the official Claude plugin directory. For convenience, add a shell alias:
+> ```sh
+> alias claude-discord='claude --dangerously-load-development-channels --channels plugin:discord-threads@axiumfoundry-plugins'
+> ```
 
 **8. Pair.**
 
@@ -156,24 +159,7 @@ Same path for attachments on historical messages found via `fetch_messages`
 
 **"not on the approved channels allowlist"**
 
-The configure skill handles this automatically when you save a token (step 6). If you still see this error, run:
-
-```
-/discord-threads:configure allow-plugin
-```
-
-Or create the file manually:
-
-```sh
-mkdir -p ~/.config/ClaudeCode
-cat > ~/.config/ClaudeCode/managed-settings.json << 'EOF'
-{
-  "allowedChannelPlugins": ["discord-threads@axiumfoundry-plugins"]
-}
-EOF
-```
-
-Then restart Claude Code.
+Add `--dangerously-load-development-channels` to your launch command (see step 7). This flag is required until the plugin is listed in the official Claude plugin directory.
 
 **Bot doesn't respond to DMs**
 
